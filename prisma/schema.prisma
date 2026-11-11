@@ -1,0 +1,56 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AnalysisStatus {
+  COMPLETED
+  FAILED
+}
+
+enum PromptVersion {
+  V1
+  V2
+}
+
+model Extraction {
+  id           String     @id @default(uuid()) @db.Uuid
+  requestedUrl String     @map("requested_url")
+  finalUrl     String     @map("final_url")
+  pageTitle    String?    @map("page_title")
+  contentText  String     @map("content_text")
+  contentHash  String     @map("content_hash")
+  charCount    Int        @map("char_count")
+  wasTruncated Boolean    @default(false) @map("was_truncated")
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  analyses     Analysis[]
+
+  @@index([contentHash])
+  @@map("extractions")
+}
+
+model Analysis {
+  id                         String         @id @default(uuid()) @db.Uuid
+  extractionId               String         @map("extraction_id") @db.Uuid
+  extraction                 Extraction     @relation(fields: [extractionId], references: [id], onDelete: Restrict)
+  status                     AnalysisStatus
+  promptVersion              PromptVersion  @map("prompt_version")
+  model                      String
+  systemPromptSnapshot       String         @map("system_prompt_snapshot")
+  userPromptTemplateSnapshot String         @map("user_prompt_template_snapshot")
+  resultJson                 Json?          @map("result_json")
+  groundingJson              Json?          @map("grounding_json")
+  inputTokens                Int?           @map("input_tokens")
+  outputTokens               Int?           @map("output_tokens")
+  latencyMs                  Int?           @map("latency_ms")
+  errorCode                  String?        @map("error_code")
+  createdAt                  DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([extractionId])
+  @@map("analyses")
+}

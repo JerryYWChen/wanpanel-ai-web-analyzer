@@ -1,0 +1,33 @@
+{
+  "name": "wanpanel-ai-web-analyzer",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "predev": "npm run build --workspace @wanpanel/shared",
+    "dev": "concurrently -n shared,api,web -c yellow,cyan,magenta \"npm run dev --workspace @wanpanel/shared\" \"npm run dev --workspace @wanpanel/api\" \"npm run dev --workspace @wanpanel/web\"",
+    "build": "npm run build --workspace @wanpanel/shared && npm run build --workspace @wanpanel/api && npm run build --workspace @wanpanel/web",
+    "test": "npm run build --workspace @wanpanel/shared && npm run test --workspace @wanpanel/api",
+    "typecheck": "npm run build --workspace @wanpanel/shared && npm run typecheck --workspace @wanpanel/api && npm run typecheck --workspace @wanpanel/web",
+    "prisma:generate": "npm run prisma:generate --workspace @wanpanel/api",
+    "prisma:validate": "npm run prisma:validate --workspace @wanpanel/api",
+    "prisma:migrate": "npm run prisma:migrate --workspace @wanpanel/api",
+    "prisma:deploy": "npm run prisma:deploy --workspace @wanpanel/api",
+    "prisma:studio": "npm run prisma:studio --workspace @wanpanel/api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "deepmerge-ts": "^8.0.0",
+    "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "deepmerge-ts": "$deepmerge-ts"
+  },
+  "engines": {
+    "node": ">=20.19.0",
+    "npm": ">=10.0.0"
+  }
+}
