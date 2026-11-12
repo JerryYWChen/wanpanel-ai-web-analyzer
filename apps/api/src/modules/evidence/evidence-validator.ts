@@ -26,7 +26,7 @@ export type EvidenceValidator = (
 ) => EvidenceValidationResult;
 
 export function normalizeEvidenceText(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
+  return value.normalize("NFKC").replace(/\s+/g, " ").trim();
 }
 
 function diagnosticComparable(value: string): string {

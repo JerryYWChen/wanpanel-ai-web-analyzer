@@ -1,5 +1,6 @@
 export type AnalysisErrorCode =
   | "INVALID_ANALYSIS_REQUEST"
+  | "ANALYSIS_NOT_FOUND"
   | "EXTRACTION_NOT_FOUND"
   | "MODEL_CONFIGURATION_ERROR"
   | "MODEL_TIMEOUT"
@@ -12,6 +13,7 @@ export type AnalysisErrorCode =
 
 const statusByCode: Record<AnalysisErrorCode, number> = {
   INVALID_ANALYSIS_REQUEST: 400,
+  ANALYSIS_NOT_FOUND: 404,
   EXTRACTION_NOT_FOUND: 404,
   MODEL_CONFIGURATION_ERROR: 503,
   MODEL_TIMEOUT: 504,

@@ -1,6 +1,11 @@
 import {
   analysisSchema,
+  type AnalysisDetail,
+  type AnalysisHistoryItem,
+  type AnalysisHistoryPagination,
   type AnalysisResponse,
+  type AnalysisStatus,
+  type PromptVersion,
 } from "@wanpanel/shared";
 import { prisma } from "../../db/prisma.js";
 import {
@@ -15,7 +20,7 @@ import {
   analysisGenerator as defaultAnalysisGenerator,
   type AnalysisGenerator,
 } from "../openai/analysis-generator.js";
-import { buildPromptV1 } from "../prompts/prompt-versions.js";
+import { buildPrompts } from "../prompts/prompt-versions.js";
 import { env } from "../../config/env.js";
 import { AnalysisError } from "./analysis-errors.js";
 import {
@@ -31,14 +36,122 @@ export interface AnalysisServiceOptions {
 }
 
 export interface AnalysisService {
-  analyze(extractionId: string): Promise<AnalysisResponse>;
+  analyze(
+    extractionId: string,
+    promptVersion: PromptVersion,
+  ): Promise<AnalysisResponse>;
+  listHistory(
+    page: number,
+    limit: number,
+  ): Promise<{
+    items: AnalysisHistoryItem[];
+    pagination: AnalysisHistoryPagination;
+  }>;
+  getAnalysis(id: string): Promise<AnalysisDetail>;
+}
+
+function toPromptVersion(value: "V1" | "V2"): PromptVersion {
+  return value === "V1" ? "v1" : "v2";
+}
+
+function toAnalysisStatus(value: "COMPLETED" | "FAILED"): AnalysisStatus {
+  return value === "COMPLETED" ? "completed" : "failed";
 }
 
 export function createAnalysisService(
   options: AnalysisServiceOptions,
 ): AnalysisService {
   return {
-    async analyze(extractionId) {
+    async listHistory(page, limit) {
+      let history;
+      try {
+        history = await options.repository.listHistory(
+          (page - 1) * limit,
+          limit,
+        );
+      } catch (error) {
+        throw new AnalysisError(
+          "DATABASE_ERROR",
+          "The analysis history could not be loaded.",
+          { cause: error },
+        );
+      }
+
+      return {
+        items: history.records.map((record) => ({
+          id: record.id,
+          sourceUrl: record.extraction.finalUrl,
+          pageTitle: record.extraction.pageTitle,
+          promptVersion: toPromptVersion(record.promptVersion),
+          model: record.model,
+          status: toAnalysisStatus(record.status),
+          createdAt: record.createdAt.toISOString(),
+        })),
+        pagination: {
+          page,
+          limit,
+          total: history.total,
+          totalPages: Math.ceil(history.total / limit),
+        },
+      };
+    },
+
+    async getAnalysis(id) {
+      let record;
+      try {
+        record = await options.repository.findAnalysis(id);
+      } catch (error) {
+        throw new AnalysisError(
+          "DATABASE_ERROR",
+          "The saved analysis could not be loaded.",
+          { cause: error },
+        );
+      }
+
+      if (!record) {
+        throw new AnalysisError(
+          "ANALYSIS_NOT_FOUND",
+          "The requested analysis was not found.",
+        );
+      }
+
+      const parsedResult =
+        record.resultJson === null
+          ? null
+          : analysisSchema.safeParse(record.resultJson);
+      if (parsedResult !== null && !parsedResult.success) {
+        throw new AnalysisError(
+          "DATABASE_ERROR",
+          "The saved analysis result is invalid.",
+          { cause: parsedResult.error },
+        );
+      }
+
+      return {
+        id: record.id,
+        status: toAnalysisStatus(record.status),
+        promptVersion: toPromptVersion(record.promptVersion),
+        model: record.model,
+        result: parsedResult === null ? null : parsedResult.data,
+        promptSnapshots: {
+          system: record.systemPromptSnapshot,
+          userTemplate: record.userPromptTemplateSnapshot,
+        },
+        extraction: {
+          id: record.extraction.id,
+          requestedUrl: record.extraction.requestedUrl,
+          sourceUrl: record.extraction.finalUrl,
+          pageTitle: record.extraction.pageTitle,
+          extractedText: record.extraction.contentText,
+          characterCount: record.extraction.charCount,
+          wasTruncated: record.extraction.wasTruncated,
+          createdAt: record.extraction.createdAt.toISOString(),
+        },
+        createdAt: record.createdAt.toISOString(),
+      };
+    },
+
+    async analyze(extractionId, promptVersion) {
       let source;
       try {
         source = await options.repository.findExtraction(extractionId);
@@ -57,7 +170,7 @@ export function createAnalysisService(
         );
       }
 
-      const prompts = buildPromptV1({
+      const prompts = buildPrompts(promptVersion, {
         url: source.finalUrl,
         pageTitle: source.pageTitle,
         extractedText: source.contentText,
@@ -83,24 +196,27 @@ export function createAnalysisService(
           sourceUrl: source.finalUrl,
           validation: grounding,
         });
-        const findingNumbers = grounding.unmatchedFindingIndexes
-          .map((index) => index + 1)
-          .join(", ");
-        throw new AnalysisError(
-          "UNGROUNDED_EVIDENCE",
-          `Evidence for key finding(s) ${findingNumbers} was not found in the extracted webpage text.`,
-        );
       }
 
       let record;
       try {
         record = await options.repository.createCompleted({
           extractionId: source.id,
+          promptVersion,
           model: generated.model,
           systemPromptSnapshot: prompts.system,
           userPromptTemplateSnapshot: prompts.userTemplate,
           result: parsed.data,
-          verifiedFindingCount: parsed.data.keyFindings.length,
+          grounding: {
+            exactMatchFindingCount:
+              parsed.data.keyFindings.length -
+              grounding.unmatchedFindingIndexes.length,
+            unmatchedFindingIndexes: grounding.unmatchedFindingIndexes,
+            mismatchReasons: grounding.mismatches.map((mismatch) => ({
+              findingIndex: mismatch.findingIndex,
+              reason: mismatch.reason,
+            })),
+          },
           latencyMs: generated.latencyMs,
         });
       } catch (error) {
@@ -115,7 +231,7 @@ export function createAnalysisService(
         id: record.id,
         extractionId: source.id,
         sourceUrl: source.finalUrl,
-        promptVersion: "v1",
+        promptVersion,
         model: generated.model,
         result: parsed.data,
         createdAt: record.createdAt.toISOString(),

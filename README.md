@@ -1,17 +1,17 @@
 # WanPanel AI Web Content Analyzer
 
-A two-day take-home project for extracting public webpage content and producing evidence-grounded structured analysis. The current build includes secure public-URL extraction, Prompt V1 analysis through the OpenAI Responses API, deterministic evidence verification, PostgreSQL persistence, and shared Zod contracts.
+A two-day take-home project for extracting public webpage content and producing evidence-supported structured analysis. The current build includes secure public-URL extraction, selectable Prompt V1/V2 analysis through the OpenAI Responses API, strict schema validation, non-blocking evidence diagnostics, PostgreSQL persistence, and shared Zod contracts.
 
 ## Architecture
 
 This is an npm-workspaces monorepo:
 
 - `apps/web`: React, TypeScript, and Vite. During development, Vite proxies `/api` to Express.
-- `apps/api`: Node.js, Express, and TypeScript. It exposes health, extraction, and Prompt V1 analysis endpoints.
+- `apps/api`: Node.js, Express, and TypeScript. It exposes health, extraction, and versioned analysis endpoints.
 - `packages/shared`: Zod schemas and inferred TypeScript types shared by browser and server.
 - `prisma`: PostgreSQL data model and migrations.
 
-The API keeps extraction, prompts, OpenAI generation, evidence validation, and database access separate. Prompt V2 remains intentionally unimplemented.
+The API keeps extraction, prompts, OpenAI generation, evidence validation, and database access separate. V2 is the current stable default; V1 remains available as the comparison baseline. Both versions use the same schema and evidence diagnostics.
 
 ## Prerequisites
 
@@ -103,32 +103,43 @@ The API validates DNS results, blocks private/loopback/reserved addresses, pins 
 
 ### `POST /api/analyses`
 
-Runs the approved Prompt V1 against a stored extraction:
+Runs Prompt V1 or V2 against a stored extraction:
 
 ```json
 {
   "extractionId": "2c1ad067-1289-4468-a4aa-a461a77c81c5",
-  "promptVersion": "v1"
+  "promptVersion": "v2"
 }
 ```
 
-The backend retrieves the extraction, calls the OpenAI Responses API with Structured Outputs, validates the result with the shared Zod schema, and checks that every evidence value occurs in the stored source after whitespace normalization. Only grounded successful results are stored. V1 grounding failures are returned without repair or retry.
+The backend retrieves the extraction, calls the OpenAI Responses API with Structured Outputs, and strictly validates the result with the shared Zod schema. It also checks whether every evidence value occurs in the stored source after NFKC and whitespace normalization. Exact-match results are persisted as diagnostic metadata, but a mismatch does not reject an otherwise schema-valid analysis.
 
-## Manual Prompt V1 test
+### `GET /api/analyses`
+
+Returns saved analyses newest first without source content, result JSON, or prompt snapshots. Query parameters are `page` (default `1`, maximum `10000`) and `limit` (default `20`, maximum `50`). The response includes total records and total pages.
+
+### `GET /api/analyses/:id`
+
+Returns one saved analysis with its structured result, related extraction and source content, model and prompt version, timestamps, and stored System/User Prompt snapshots. Unknown UUIDs return `404`; malformed IDs return `400`.
+
+## Manual prompt comparison
 
 1. Add a valid server-side `OPENAI_API_KEY` and a Structured Outputs-capable `OPENAI_MODEL` to `.env`.
 2. Run `npm run dev`.
 3. Open `http://localhost:5173`.
 4. Extract a public HTML webpage.
-5. Select **Analyze with AI**.
-6. Confirm the UI shows every structured field, the configured model, and `Prompt V1`.
+5. Run the default **V2 Stable** analysis and save the result for comparison.
+6. Keep the same extraction, select **V1 Baseline**, and run the analysis again.
+7. Confirm the UI shows every structured field, the configured model, and the selected prompt version.
 
-The exact approved prompt templates are stored under `apps/api/src/modules/prompts/v1/`.
+The exact approved prompt templates are stored under `apps/api/src/modules/prompts/v1/` and `apps/api/src/modules/prompts/v2/`. See `docs/PROMPT_V2_DESIGN.md` for the controlled comparison design.
+
+Stable describes the selected production prompt version, not a guarantee of factual accuracy or semantic grounding. Schema validation remains strict, while evidence-match diagnostics and qualitative review provide complementary signals about output quality.
 
 ### Development grounding diagnostics
 
-When `NODE_ENV=development`, a rejected evidence result writes a bounded diagnostic object to the API console. It includes the finding number, mismatch classification, token-overlap score, a truncated model-evidence preview, and a truncated nearest-source preview. Query strings and URL fragments are removed, and the logger never includes API keys, complete prompts, or the full extracted source. Production emits no grounding diagnostics. These diagnostics do not change whether evidence is accepted.
+When `NODE_ENV=development`, an evidence mismatch writes a bounded diagnostic object to the API console. It includes the finding number, mismatch classification, token-overlap score, a truncated model-evidence preview, and a truncated nearest-source preview. Query strings and URL fragments are removed, and the logger never includes API keys, complete prompts, or the full extracted source. Production emits no console diagnostics; text-free mismatch metadata is still stored with the analysis. Diagnostics do not change whether a schema-valid analysis is accepted.
 
 ## Current boundaries
 
-Not yet implemented: Prompt V2, Prompt Inspector, history UI, or optional bonus features. JavaScript-rendered pages are not rendered in a headless browser; only the server-returned HTML is analyzed. Prompt V1 may paraphrase evidence; deterministic verification intentionally rejects that response so its baseline behavior can be measured before V2.
+Not implemented: deployment, automated evaluation, or optional bonus features. The React application includes read-only analysis history and a Prompt Inspector backed by persisted prompt snapshots. JavaScript-rendered pages are not rendered in a headless browser; only the server-returned HTML is analyzed. Exact evidence matching is a useful signal but cannot determine whether a paraphrase is faithful, so mismatches require evaluation rather than automatic acceptance as verified evidence.

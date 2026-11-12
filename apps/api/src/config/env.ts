@@ -23,6 +23,10 @@ const envSchema = z.object({
     .int()
     .positive()
     .default(60_000),
+  DATABASE_URL: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().trim().min(1).optional(),
+  ),
   OPENAI_API_KEY: z.preprocess(
     (value) => (value === "" ? undefined : value),
     z.string().trim().min(1).optional(),
@@ -34,4 +38,22 @@ const envSchema = z.object({
   OPENAI_TIMEOUT_MS: z.coerce.number().int().positive().default(45_000),
 });
 
-export const env = envSchema.parse(process.env);
+export function parseEnv(input: NodeJS.ProcessEnv) {
+  const parsed = envSchema.parse(input);
+
+  if (parsed.NODE_ENV === "production") {
+    const missing = (
+      ["DATABASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL"] as const
+    ).filter((name) => !parsed[name]);
+
+    if (missing.length > 0) {
+      throw new Error(
+        `Missing required production environment variables: ${missing.join(", ")}.`,
+      );
+    }
+  }
+
+  return parsed;
+}
+
+export const env = parseEnv(process.env);

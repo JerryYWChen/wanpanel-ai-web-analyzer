@@ -14,6 +14,21 @@ function analysisWithEvidence(evidence: string): Analysis {
 }
 
 describe("evidence verification", () => {
+  it("accepts equivalent Unicode compatibility typography", () => {
+    const result = evidenceValidator(
+      analysisWithEvidence(
+        "The official number of exoplanets — planets outside our solar system — confirmed by NASA has reached (and then quickly exceeded) 6,000.",
+      ),
+      "The oﬃcial number of exoplanets — planets outside our solar system — confirmed by NASA has reached (and then quickly exceeded) 6,000.",
+    );
+
+    expect(result).toEqual({
+      valid: true,
+      unmatchedFindingIndexes: [],
+      mismatches: [],
+    });
+  });
+
   it("accepts exact evidence with normalized whitespace", () => {
     const result = evidenceValidator(
       analysisWithEvidence("The launch happened in 2026."),
@@ -40,6 +55,28 @@ describe("evidence verification", () => {
       reason: "likely_paraphrase",
       evidence: "The launch occurred in 2026.",
     });
+  });
+
+  it("rejects a preposition change despite high textual similarity", () => {
+    const result = evidenceValidator(
+      analysisWithEvidence(
+        "within thousands of light-years from our solar system",
+      ),
+      "within thousands of light-years of our solar system",
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.unmatchedFindingIndexes).toEqual([0]);
+  });
+
+  it("rejects fabricated evidence", () => {
+    const result = evidenceValidator(
+      analysisWithEvidence("NASA confirmed life on the exoplanet."),
+      "NASA catalogs confirmed exoplanets and candidate discoveries.",
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.unmatchedFindingIndexes).toEqual([0]);
   });
 
   it("diagnoses punctuation differences without accepting them", () => {

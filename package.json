@@ -12,6 +12,7 @@
     "build": "npm run build --workspace @wanpanel/shared && npm run build --workspace @wanpanel/api && npm run build --workspace @wanpanel/web",
     "test": "npm run build --workspace @wanpanel/shared && npm run test --workspace @wanpanel/api",
     "typecheck": "npm run build --workspace @wanpanel/shared && npm run typecheck --workspace @wanpanel/api && npm run typecheck --workspace @wanpanel/web",
+    "prisma": "node scripts/run-prisma.mjs",
     "prisma:generate": "npm run prisma:generate --workspace @wanpanel/api",
     "prisma:validate": "npm run prisma:validate --workspace @wanpanel/api",
     "prisma:migrate": "npm run prisma:migrate --workspace @wanpanel/api",
