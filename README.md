@@ -1,145 +1,91 @@
 # WanPanel AI Web Content Analyzer
 
-A two-day take-home project for extracting public webpage content and producing evidence-supported structured analysis. The current build includes secure public-URL extraction, selectable Prompt V1/V2 analysis through the OpenAI Responses API, strict schema validation, non-blocking evidence diagnostics, PostgreSQL persistence, and shared Zod contracts.
+## Overview
 
-## Architecture
+An AI-powered web content analyzer built for the WanPanel technical assessment. It securely extracts readable content from public webpages, generates structured analyses through the OpenAI Responses API, and persists results for review and prompt comparison.
 
-This is an npm-workspaces monorepo:
+- **Live Demo:** [wanpanel-ai-web-analyzer.onrender.com](https://wanpanel-ai-web-analyzer.onrender.com)
+- **GitHub:** [JerryYWChen/wanpanel-ai-web-analyzer](https://github.com/JerryYWChen/wanpanel-ai-web-analyzer)
 
-- `apps/web`: React, TypeScript, and Vite. During development, Vite proxies `/api` to Express.
-- `apps/api`: Node.js, Express, and TypeScript. It exposes health, extraction, and versioned analysis endpoints.
-- `packages/shared`: Zod schemas and inferred TypeScript types shared by browser and server.
-- `prisma`: PostgreSQL data model and migrations.
+## Features
 
-The API keeps extraction, prompts, OpenAI generation, evidence validation, and database access separate. V2 is the current stable default; V1 remains available as the comparison baseline. Both versions use the same schema and evidence diagnostics.
+- **Secure extraction:** HTTP/HTTPS validation, SSRF protection, DNS and redirect revalidation, request limits, Readability extraction, and source preview.
+- **Structured analysis:** Zod-validated summaries, key findings, supporting evidence, topics, dates, and missing information.
+- **Versioned prompts:** Selectable **V1 Baseline** and **V2 Stable** prompts, with V2 used by default for new analyses.
+- **Prompt Inspector:** Read-only access to the saved model, prompt version, System Prompt snapshot, User Prompt template, and structured JSON.
+- **Persistent history:** Paginated PostgreSQL history with saved source content and analysis details.
 
-## Prerequisites
+## Tech Stack
 
-- Node.js 20.19 or newer
-- npm 10 or newer
-- PostgreSQL 14 or newer, locally or through a hosted provider
-
-## Local setup
-
-1. Install dependencies:
-
-   ```bash
-   npm install
-   ```
-
-2. Copy `.env.example` to `.env` and update `DATABASE_URL` for your PostgreSQL instance. `OPENAI_API_KEY` and `OPENAI_MODEL` can remain empty during Phase 1.
-
-3. Generate the Prisma client:
-
-   ```bash
-   npm run prisma:generate
-   ```
-
-4. Apply the committed migration after PostgreSQL is available:
-
-   ```bash
-   npm run prisma:migrate
-   ```
-
-5. Start the shared package watcher, Express API, and Vite UI together:
-
-   ```bash
-   npm run dev
-   ```
-
-6. Open `http://localhost:5173`. The page should report `API connected: wanpanel-api`. The API can also be checked directly at `http://localhost:3001/api/health`.
-
-## Commands
-
-| Command | Purpose |
+| Layer | Technology |
 | --- | --- |
-| `npm run dev` | Run shared types, API, and web development servers |
-| `npm run build` | Build shared, API, and web workspaces |
-| `npm test` | Run focused backend tests |
-| `npm run typecheck` | Type-check API and web after building shared contracts |
-| `npm run prisma:generate` | Generate the Prisma client |
-| `npm run prisma:validate` | Validate the Prisma schema and environment |
-| `npm run prisma:migrate` | Apply migrations and create a new development migration when the schema changes |
-| `npm run prisma:deploy` | Apply committed migrations in production |
-| `npm run prisma:studio` | Inspect the configured database |
+| Frontend | React 19, TypeScript, Vite |
+| Backend | Node.js, Express 5, TypeScript |
+| AI | OpenAI Responses API, Structured Outputs |
+| Validation | Shared Zod schemas |
+| Extraction | Mozilla Readability, Cheerio, JSDOM |
+| Database | Prisma 6, Neon PostgreSQL |
+| Deployment | Single Render Web Service |
 
-## Environment variables
+## Getting Started
 
-| Name | Required now | Description |
-| --- | --- | --- |
-| `NODE_ENV` | No | `development`, `test`, or `production` |
-| `PORT` | No | Express port; defaults to `3001` |
-| `EXTRACTION_TIMEOUT_MS` | No | Total fetch/redirect timeout; defaults to `10000` |
-| `EXTRACTION_MAX_HTML_BYTES` | No | Maximum decompressed response size; defaults to 2 MiB |
-| `EXTRACTION_MAX_TEXT_CHARS` | No | Maximum stored/returned readable text; defaults to `60000` |
-| `DATABASE_URL` | For Prisma/database commands | PostgreSQL connection string |
-| `OPENAI_API_KEY` | For AI analysis | Server-only OpenAI credential; never use a `VITE_` prefix |
-| `OPENAI_MODEL` | For AI analysis | Responses API model with Structured Outputs support |
-| `OPENAI_TIMEOUT_MS` | No | OpenAI request timeout; defaults to `45000` |
+Prerequisites: Node.js 20.19+, npm 10+, PostgreSQL 14+ or Neon, and an OpenAI API key with a compatible model.
 
-## Current API
-
-### `GET /api/health`
-
-Returns a shared, Zod-validated response:
-
-```json
-{
-  "status": "ok",
-  "service": "wanpanel-api",
-  "timestamp": "2026-11-10T00:00:00.000Z"
-}
+```bash
+git clone https://github.com/JerryYWChen/wanpanel-ai-web-analyzer.git
+cd wanpanel-ai-web-analyzer
+npm install
+cp .env.example .env
 ```
 
-### `POST /api/extractions`
+Configure the required server-side values in `.env`:
 
-Accepts a public HTTP/HTTPS HTML URL:
-
-```json
-{ "url": "https://example.com/article" }
+```dotenv
+DATABASE_URL="postgresql://..."
+OPENAI_API_KEY="..."
+OPENAI_MODEL="..."
 ```
 
-The API validates DNS results, blocks private/loopback/reserved addresses, pins the validated address for the connection, and repeats those checks for every redirect. Successful responses contain the stored extraction ID, final source URL, title, normalized readable text, character count, and truncation status.
+Generate Prisma Client, apply the local migration, and start the development environment:
 
-### `POST /api/analyses`
-
-Runs Prompt V1 or V2 against a stored extraction:
-
-```json
-{
-  "extractionId": "2c1ad067-1289-4468-a4aa-a461a77c81c5",
-  "promptVersion": "v2"
-}
+```bash
+npm run prisma:generate
+npm run prisma:migrate
+npm run dev
 ```
 
-The backend retrieves the extraction, calls the OpenAI Responses API with Structured Outputs, and strictly validates the result with the shared Zod schema. It also checks whether every evidence value occurs in the stored source after NFKC and whitespace normalization. Exact-match results are persisted as diagnostic metadata, but a mismatch does not reject an otherwise schema-valid analysis.
+Open `http://localhost:5173`. Vite proxies `/api` to Express on port `3001`.
 
-### `GET /api/analyses`
+Production uses one Express service to serve both `/api/*` and the compiled React application. The Render build command is `npm ci --include=dev && npm run prisma && npm run build`; the start command is `npm run prisma && npm run start --workspace @wanpanel/api`.
 
-Returns saved analyses newest first without source content, result JSON, or prompt snapshots. Query parameters are `page` (default `1`, maximum `10000`) and `limit` (default `20`, maximum `50`). The response includes total records and total pages.
+## Prompt Engineering & Evaluation
 
-### `GET /api/analyses/:id`
+**V1 Baseline** preserves the original concise task framing and direct-evidence requirement. **V2 Stable** adds explicit untrusted-content handling and more selective guidance for summaries, findings, topics, dates, and missing information. Both versions use the same model integration, output schema, validation, and persistence pipeline; “Stable” does not guarantee factual accuracy.
 
-Returns one saved analysis with its structured result, related extraction and source content, model and prompt version, timestamps, and stored System/User Prompt snapshots. Unknown UUIDs return `404`; malformed IDs return `400`.
+- [V1 prompt implementation](apps/api/src/modules/prompts/v1)
+- [V2 prompt implementation](apps/api/src/modules/prompts/v2)
+- [V1 baseline history](docs/PROMPT_V1_BASELINE.md)
+- [V2 design and evaluation history](docs/PROMPT_V2_DESIGN.md)
 
-## Manual prompt comparison
+Prompt behavior was qualitatively evaluated with stored extractions from [MDN JavaScript](https://developer.mozilla.org/en-US/docs/Web/JavaScript), [NASA Exoplanets](https://science.nasa.gov/exoplanets/), and [MedlinePlus High Blood Pressure](https://medlineplus.gov/highbloodpressure.html).
 
-1. Add a valid server-side `OPENAI_API_KEY` and a Structured Outputs-capable `OPENAI_MODEL` to `.env`.
-2. Run `npm run dev`.
-3. Open `http://localhost:5173`.
-4. Extract a public HTML webpage.
-5. Run the default **V2 Stable** analysis and save the result for comparison.
-6. Keep the same extraction, select **V1 Baseline**, and run the analysis again.
-7. Confirm the UI shows every structured field, the configured model, and the selected prompt version.
+Zod schema validation is blocking: invalid structured output is rejected. Evidence matching is diagnostic only. Evidence is normalized with Unicode NFKC and whitespace normalization, then checked as a contiguous source substring. A mismatch may be a faithful paraphrase, while an exact match may still support only part of a finding; semantic review remains necessary.
 
-The exact approved prompt templates are stored under `apps/api/src/modules/prompts/v1/` and `apps/api/src/modules/prompts/v2/`. See `docs/PROMPT_V2_DESIGN.md` for the controlled comparison design.
+## Testing, Limitations & AI Disclosure
 
-Stable describes the selected production prompt version, not a guarantee of factual accuracy or semantic grounding. Schema validation remains strict, while evidence-match diagnostics and qualitative review provide complementary signals about output quality.
+The current automated suite contains **75 passing tests across 16 files**. Run the complete checks with:
 
-### Development grounding diagnostics
+```bash
+npm test
+npm run typecheck
+npm run build
+```
 
-When `NODE_ENV=development`, an evidence mismatch writes a bounded diagnostic object to the API console. It includes the finding number, mismatch classification, token-overlap score, a truncated model-evidence preview, and a truncated nearest-source preview. Query strings and URL fragments are removed, and the logger never includes API keys, complete prompts, or the full extracted source. Production emits no console diagnostics; text-free mismatch metadata is still stored with the analysis. Diagnostics do not change whether a schema-valid analysis is accepted.
+Key limitations:
 
-## Current boundaries
+- Client-side JavaScript-rendered content may be absent because extraction uses server-returned HTML.
+- LLM output can still be incomplete or inaccurate; schema compliance and exact evidence matches do not eliminate hallucinations.
+- Analysis history is shared and has no authentication or per-user isolation.
+- The public API has no rate limiting, and a Render free-tier deployment may have cold starts after inactivity.
 
-Not implemented: deployment, automated evaluation, or optional bonus features. The React application includes read-only analysis history and a Prompt Inspector backed by persisted prompt snapshots. JavaScript-rendered pages are not rendered in a headless browser; only the server-returned HTML is analyzed. Exact evidence matching is a useful signal but cannot determine whether a paraphrase is faithful, so mismatches require evaluation rather than automatic acceptance as verified evidence.
+OpenAI ChatGPT and Codex assisted with architecture discussions, implementation, debugging, testing, prompt iteration, deployment preparation, and documentation. The developer reviewed the code and outputs, ran the tests, evaluated prompt behavior, and made the final design decisions.
